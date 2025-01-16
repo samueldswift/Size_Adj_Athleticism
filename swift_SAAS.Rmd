@@ -1,0 +1,984 @@
+---
+title: "Acing the NFL Draft: The Impact of Size-Adjusted Athleticism Score on All-Pro Selections"
+author: "Sam Swift"
+date: "`r format(Sys.Date(), '%7/%8/%2024')`"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+    fig_caption: true
+    highlight: tango
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+\vspace{12pt}
+
+```{r, echo=FALSE}
+# Load necessary packages
+library(webshot2)
+```
+
+# Introduction
+
+Athleticism is a key factor that influences the success of football players, but how much does it matter? Is there a baseline level of athleticism needed to play in the NFL? How does this change for each position group? Teams must evaluate athletic performance metrics to identify and draft players with the potential to excel at the professional level. My analysis focuses on the impact of Size-Adjusted Athleticism Score (SAAS) on the likelihood of a player achieving All-Pro status. SAAS is a composite measure that accounts for a player's size and athletic testing results from the NFL Combine, such as the 40-yard dash, vertical jump, broad jump, shuttle drill, 3-cone drill, and bench press. Results from my analysis provide NFL teams with insights into the importance of athleticism in the draft process, guiding their decision-making to maximize the potential of their draft picks. This analysis was conducted to answer the question: How does Size-Adjusted Athleticism influence the likelihood of becoming an All-Pro player in the NFL?
+
+# Overview of Analysis
+
+In this analysis, I take NFL combine data from 2013-2022, and create a stat that ranks each player's athleticism testing, adjusting for the size of the player (in height and weight). I call this stat "size-adjusted athleticism score", or "SAAS" for short. SAAS is a combination of six individual size-adjusted stats that I create for each combine test. In each size-adjusted calculation, I apply weights that attempt to remove any positional bias that makes certain positions appear more athletic than others. My underlying assumption behind my use of weights is that elite athletes come from a multitude of positions, and no specific position is significantly more athletic than the others. The weights aid in accurately ranking athleticism between players of different performances and sizes.
+
+Just a note: the creation of an athleticism score is not new when it comes to the NFL combine. Relative athleticism score, or RAS, also attempts to put a number on player athleticism, but it only compares players to other players at their same position. I believe size-adjusted athleticism score provides a different angle on player athletic ability. 
+
+SAAS was created to aid in the player evaluation process, specifically when it comes to drafting players in the NFL draft. SAAS should be used as a filter to increase the odds of hitting on a player (in unison with other scouting and analytical methods), rather than a stand alone metric. By the end of this analysis, I will recommend an athleticism threshold to watch out for when drafting players. Players below the threshold are statistically less likely to ever amount to a true difference making NFL player (which I've defined as players who have made the All-Pro team).
+
+# Load & Clean Data
+
+I read the combine csv file, which includes the player name, draft class, position, school, height, weight, and combine measurables. Note that this dataset includes all players who attended the combine between 2013 and 2022, but the final dataset I work with only includes players who competed in every test at the combine from 2013 to 2022. I also remove players who didn't test in every combine drill so that the athleticism metric didn't favor players who tested in more drills.
+
+\vspace{12pt}
+```{r, echo=FALSE}
+combine <-read.csv('Combine_Data_Master.csv')
+```
+
+```{r, echo=FALSE}
+# drop unnecessary columns
+combine <- combine[, -which(names(combine) %in% c("fty_pct_given_mass", "vrt_pct_given_mass", "bch_pct_given_mass", "bj_pct_given_mass", "three_pct_given_mass", "shud_pct_given_mass", "RAS"))]
+```
+
+
+```{r, echo=FALSE}
+# Remove rows with NA and NULL values
+combine <- na.omit(combine)
+```
+
+# Calculate Size & Athleticism metrics
+
+Time to calculate size-adjusted metrics for each combine test. As a starting point for my calculations, I took an individual's testing numbers compared to the total average for that test. A result above 1 for this calculation means that the player has testing better than average, whereas a result below 1 means that the player tests worse than average. I factor in height and weight in addition to the raw combine numbers, because it's unfair to hold a 6'6", 300 lb offensive tackle to the same 40 time standard as a 6'0" 200 lb wide reciever. Athleticism must be tested relative to one's size, which is why I called the stat "sa_40", meaning size-adjusted 40 yard dash time. Any time-based metric is calculated differently than other metrics, because lower numbers are better. Because of this I took the average for time metrics divided by the individual time, so that low times would produce a result greater than 1. 
+
+After calculating the ratios of individual players vs. the average, I made the assumption that elite combine athletes are divided amongst different positions (rather than a specific position being more athletic than the rest). I altered the weights for each combine event ratio so there would be representation from many positions near the top of each stat's athleticism rankings to illustrate athletic parity among players of different heights and weights. For size-adjusted 40 time (sa_40), I put more weight on the 40 yard dash (4x multiplier), which reduced the impact of height and weight on athleticism. Results were largely skewed toward heavy players appearing to be most athletic prior to weighting the metric (big man bias). I use whole numbers as weights for simplicity's sake; however, if I were to recreate this in the future I may want to be more sophisticated in my methodology.
+
+\vspace{12pt}
+
+```{r, echo=FALSE}
+# size-adjusted 40 time
+
+# Calculate the averages
+avg_fty_dash <- mean(combine$fty_dash)
+avg_weight <- mean(combine$weight)
+avg_height_IN <- mean(combine$Height_IN)
+
+# Calculate the ratios
+combine$ratio_fty_dash <- ((avg_fty_dash / combine$fty_dash)) 
+combine$ratio_weight <- ((combine$weight / avg_weight))
+combine$ratio_Height_IN <- combine$Height_IN / avg_height_IN
+
+# Calculate size-adjusted 40
+combine$sa_40 <- combine$ratio_fty_dash * 4 + combine$ratio_weight + combine$ratio_Height_IN # properly weight 40 yd dash
+```
+
+
+Then I calculate size-adjusted vertical (sa_vert) using the same height ratio from the above, but a slightly discounted (1/2) weight ratio. I put more weight on the vertical test performance in comparison to height and weight here as well (as seen by the 2x multiplier). 
+
+
+```{r, echo=FALSE}
+# size-adjusted vertical
+
+# Calculate the averages
+avg_vert <- mean(combine$Vertical)
+
+# Calculate the ratios
+combine$ratio_vert <- (combine$Vertical / avg_vert) # divide by z-score
+
+# Calculate size-adjusted vertical
+combine$sa_vert <- combine$ratio_vert * 2 + combine$ratio_weight / 2 + combine$ratio_Height_IN
+```
+
+Next, I calculate size-adjusted bench press (sa_bench) using altered size ratios. I put more weight on height and tried to discount weight (as seen by the 2x multiplier on height and subtracting weight divided by 2), because taller players (or those with longer arms) are at a disadvantage in this test because they have to move the bar farther for each rep. Players who are heavier, on the other hand, have an advantage because they are generally capable of lifting heavier weights (this is why I subtracted weight, because I see a lighter player who can lift the same weight as a heavier player as more athletic).
+
+\vspace{12pt}
+
+```{r, echo=FALSE}
+# size-adjusted bench
+
+# Calculate the averages
+avg_bench <- mean(combine$Bench)
+
+# Calculate the ratios
+combine$ratio_bench <- (combine$Bench / avg_bench) 
+
+# Calculate size-adjusted bench
+combine$sa_bench <- combine$ratio_bench + (combine$ratio_Height_IN * 2) - combine$ratio_weight / 2
+
+```
+Moving on, I calculate size-adjusted broad jump (sa_broad) using the height ratio from above and a heavily discounted weight ratio (1/4). I discounted the weight ratio in calculating this stat, because the top spots were entirely 300+ pound players without doing so.
+\vspace{12pt}
+```{r, echo=FALSE}
+# size-adjusted broad this is a pretty nice ranking if you sort by the "sa_broad" stat
+
+# Calculate the averages
+avg_broad <- mean(combine$broad_jump)
+
+# Calculate the ratios
+combine$ratio_broad <- (combine$broad_jump / avg_broad)
+
+# Calculate size-adjusted broad
+combine$sa_broad <- combine$ratio_broad + combine$ratio_Height_IN + combine$ratio_weight / 4
+
+```
+
+Next, I calculate size-adjusted three cone (sa_three) using the normal height ratio from above, and a discounted weight ratio (1/2). I put more weight on the three-cone test performance in comparison to height and weight here (as seen by the 2x multiplier). This helps adjust for the "big-man bias" we've seen throughout the stats I've calculated prior to adding values as weights.
+\vspace{12pt}
+```{r, echo=FALSE}
+# size-adjusted three this is a pretty nice ranking if you sort by the "sa_three" stat
+
+# Calculate the averages
+avg_three <- mean(combine$three_cone)
+
+# Calculate the ratios
+combine$ratio_three <- (avg_three / combine$three_cone) 
+
+# Calculate size-adjusted three
+combine$sa_three <- combine$ratio_three * 2 + combine$ratio_weight / 2 + combine$ratio_Height_IN
+
+```
+
+I calculate size-adjusted shuttle (sa_shuttle) using discounted size bonus ratios from above (1/2 discount). I put more weight on the shuttle test performance in comparison to height and weight here (as seen by the 2x multiplier). I decreased importance of size in order to adjust for the "big man bias" at the top of the sa_shuttle rankings.
+```{r, echo=FALSE}
+# size-adjusted shuttle this is a pretty nice ranking if you sort by the "sa_shuttle" stat
+
+# Calculate the averages
+avg_shuttle <- mean(combine$Shuttle)
+
+# Calculate the ratios
+combine$ratio_shuttle <- (avg_shuttle / combine$Shuttle) 
+
+# Calculate size-adjusted shuttle
+combine$sa_shuttle <- combine$ratio_shuttle * 2 + combine$ratio_weight / 2 + combine$ratio_Height_IN / 2
+
+```
+
+Finally, I take all of the finalized, size-adjusted individual testing metrics and combine them into one stat called "SAAS" or size-adjusted athleticism score. This will serve as a placeholder until I add weights to each of the combine metrics.
+
+```{r}
+combine$SAAS <- combine$sa_40 + combine$sa_vert + combine$sa_bench + combine$sa_broad + combine$sa_three + combine$sa_shuttle
+```
+
+Rather than simply playing around with weights using my intuition on what combine events are most translatable to football success, I looked at the distribution of all-pro players for each size-adjusted metric to determine weights. 
+
+# Load & Clean All-Pro Data 
+
+In order to do this, I start by bringing in All-Pro data and doing some quick data cleaning/preparation. Specifically, I download a data file of every All-Pro NFL player from 2014 to 2023 to see how each combine metric (and eventually SAAS overall) relates to actual NFL success. In my code, I assign placeholder SAAS values to players that show up in both the All-Pro dataset and the combine dataset. Now that I have a list of All-Pro players (players in the data that have a SAAS value assigned), I create a dummy variable column that stores a 1 if the player has made an All-Pro team, and 0 if the player has not made an All-Pro team , filter out missing values, and add the dummy column to the original combine dataset.
+
+
+```{r, echo=FALSE}
+all_pro <- read.csv('allpro_total.csv')
+all_pro_one_col <-  read.csv('allpro_one_column.csv')
+```
+
+```{r, echo=FALSE}
+# The code below assigns SAAS values to players that show up in both the All-Pro dataset and the combine dataset. 
+# Create a new column in the "all_pro_one_col" dataset
+all_pro_one_col$SAAS <- NA  # Initialize the column with NA values
+
+# Loop through each row in the "all_pro_one_col" dataset
+for (i in 1:nrow(all_pro_one_col)) {
+  # Check if the player name in "all_pro_one_col" matches any player name in "combine"
+  matching_rows <- which(combine$Player %in% all_pro_one_col$Players[i])
+  
+  # If a match is found, assign the corresponding SAAS value to "all_pro_one_col$SAAS"
+  if (length(matching_rows) > 0) {
+    all_pro_one_col$SAAS[i] <- combine$SAAS[matching_rows[1]] 
+  }
+}
+
+## This is optional code to remove duplicate players from All-Pro data because some made the team multiple times
+# all_pro_one_col <- all_pro_one_col[!duplicated(all_pro_one_col$Players), ]
+```
+
+\vspace{12pt}
+```{r, echo=FALSE}
+# Create a new column in the "combine" dataset
+combine$all_pro_binary <- ifelse(combine$Player %in% all_pro_one_col$Players, 1, 0)
+
+# Filter out players with NA SAAS values
+all_pro_one_col <- all_pro_one_col[complete.cases(all_pro_one_col$SAAS), ]
+
+```
+
+# Statistics and Intuition Behind SAAS Weights & Final Stat Creation
+
+The six density plots below show the distribution of All-Pro players vs. Non-All-Pro players within each combine measurable. I use max-min scaling to standardize the x-axis before calculating means for each player group. The distance between the means help visualize how much higher All-Pro players test in each metric. Greater distances indicate the stat to be more important in predicting All-Pro players (and should receive a greater weight in the final SAAS calculation).
+
+```{r, echo=FALSE}
+library(ggplot2)
+library(dplyr)
+
+# Filter the combine dataset to separate All-Pro and non-All-Pro players
+all_pro_players <- combine[combine$all_pro_binary == 1, ]
+non_all_pro_players <- combine[combine$all_pro_binary == 0, ]
+
+
+# List of stats
+stats <- c('sa_40',"sa_vert", "sa_bench", "sa_broad", "sa_three", "sa_shuttle")
+
+for (stat in stats) {
+  # Combine data for the current stat
+  combined_data <- rbind(
+    data.frame(value = all_pro_players[[stat]], All_Pro = "Yes"),
+    data.frame(value = non_all_pro_players[[stat]], All_Pro = "No")
+  )
+  
+  # Min-Max Scaling
+  min_value <- min(combined_data$value, na.rm = TRUE)
+  max_value <- max(combined_data$value, na.rm = TRUE)
+  combined_data <- combined_data %>%
+    mutate(scaled_value = 100 * (value - min_value) / (max_value - min_value))
+  
+  # Calculate means for scaled values
+  means <- combined_data %>%
+    group_by(All_Pro) %>%
+    summarise(mean_value = mean(scaled_value, na.rm = TRUE))
+  
+  # Calculate the distance between means
+  distance <- abs(means$mean_value[means$All_Pro == "Yes"] - means$mean_value[means$All_Pro == "No"])
+  
+  # Create a density plot with mean lines and distance label
+  p <- ggplot(combined_data, aes(x = scaled_value, fill = All_Pro)) +
+    geom_density(alpha = 0.6) +
+    geom_vline(data = means, aes(xintercept = mean_value, color = All_Pro), linetype = "dashed", size = 1) +
+    geom_text(data = means, aes(x = mean_value, y = 0, label = sprintf("%.0f", mean_value)), 
+              color = "black", vjust = -0.5) +
+    annotate("text", x = mean(means$mean_value), y = max(density(combined_data$scaled_value)$y),
+             label = sprintf("Distance: %.2f", distance), size = 5, hjust = 1.5, vjust = 1) +
+    labs(title = paste("Density of", toupper(stat), "with Mean and Distance Between Means"),
+         x = paste(toupper(stat), "(Scaled)"),
+         y = "Density") +
+    scale_fill_manual(values = c("Yes" = "#0072B2", "No" = "#D55E00")) +
+    scale_color_manual(values = c("Yes" = "#0072B2", "No" = "#D55E00")) +
+    theme_minimal() +
+    theme(plot.title = element_text(hjust = 0.5),
+          axis.title = element_text(size = 14),
+          axis.text = element_text(size = 12))
+  
+  print(p)
+}
+
+```
+
+Upon analyzing the graphs above, most size-adjusted combine metrics have little difference in distance between means (40 time, vertical, broad, and shuttle were all within 1% of each other), hovering around a 7% difference. The main finding is that the mean for an All-Pro caliber bench press is only 3% better than the mean for non-All-Pro players, and size-adjusted three cone time had a slightly smaller difference in means (only 6%, compared to roughly 7%) when compared to the other 4 metrics. Though the top 4 to 5 metrics are tightly clustered, the ranking for importance of size-adjusted combine drills after this analysis is as follows:
+
+1. Broad Jump (7.44%)
+2. 40 Yard Dash (7.40%)
+3. Vertical (7.38%)
+4. Shuttle (6.80%)
+5. Three Cone (5.99%)
+6. Bench (3.03%)
+
+Next, I visualize the percentage of the blue All-Pro player distributions that are above the mean for the orange distributions, or players that did not make all pro. The percentage shown as a result (below in the bar chart) answers the question, "How many All-Pro players tested higher than the non-All-Pro average in this metric?" Higher percentages should be weighted more heavily in the final SAAS computation. 
+
+```{r, echo=FALSE}
+# List of stats
+stats <- c("sa_40","sa_vert", "sa_bench", "sa_broad", "sa_three", "sa_shuttle")
+
+# Create an empty list to store the results
+percentage_results <- list()
+
+for (stat in stats) {
+  # Combine data for the current stat
+  combined_data <- rbind(
+    data.frame(value = all_pro_players[[stat]], All_Pro = "Yes"),
+    data.frame(value = non_all_pro_players[[stat]], All_Pro = "No")
+  )
+  
+  # Min-Max Scaling
+  min_value <- min(combined_data$value, na.rm = TRUE)
+  max_value <- max(combined_data$value, na.rm = TRUE)
+  combined_data <- combined_data %>%
+    mutate(scaled_value = (value - min_value) / (max_value - min_value))
+  
+  # Calculate mean for non-All-Pro players
+  non_all_pro_mean <- mean(combined_data$scaled_value[combined_data$All_Pro == "No"], na.rm = TRUE)
+  
+  # Calculate percentage of All-Pro players above the non-All-Pro mean
+  percentage_above_mean <- sum(combined_data$scaled_value[combined_data$All_Pro == "Yes"] > non_all_pro_mean) /
+                           sum(combined_data$All_Pro == "Yes") * 100
+  
+  # Store the result
+  percentage_results[[stat]] <- percentage_above_mean
+}
+
+# Convert results to a data frame for plotting
+percentage_df <- data.frame(
+  Stat = names(percentage_results),
+  Percentage = unlist(percentage_results)
+)
+
+# Create a bar plot of the percentages
+ggplot(percentage_df, aes(x = Stat, y = Percentage, fill = Stat)) +
+  geom_bar(stat = "identity") +
+    geom_text(aes(label = sprintf("%.2f%%", Percentage)), vjust = 1.5, size = 5) +
+  labs(title = "Percentage of All-Pro Players Above Non-All-Pro Mean",
+       x = "Metric",
+       y = "Percentage (%)") +
+  scale_fill_brewer(palette = "Set3") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12))
+
+```
+
+Whereas the differences in means were generally tightly clustered, here I see some real differentiation in which combine test is most important. The range in percentage for the bar chart is 14.43% compared to a 4.37% range in the differences in distribution means.
+
+Based on the bar chart alone, the ranking for importance of size-adjusted combine drills is as follows:
+
+1. 40 Yard Dash (72.16%)
+2. Shuttle (70.10%)
+3. Three Cone (69.07%)
+4. Broad Jump (67.01%)
+5. Vertical (63.92%)
+6. Bench (57.73%)
+
+To create my final weights for importance of each size adjusted metric, I take into account where each metric ranked in the density plot difference in means as well as the bar chart visual. The bar chart visual will be weighted more heavily, because there are larger gaps in percentage points. Size-adjusted 40 yard dash for All-Pro players is a clear step ahead of non-All-Pro players, so I plan to weight 40 time the heaviest. 40 time takes home the #1 spot in the bar chart ranking, and is a close #2 in the density plot ranking. The next two most important metrics are size-adjusted shuttle and size-adjusted broad jump. Shuttle time is closely clumped in the top 4 of the density plots and is number two in the bar chart, while broad jump is the most important density plot metric and 4th highest in the bar chart. Size adjusted three cone is roughly average in importance, considering it is a close #5 in the density plot ranking (within a percent), and #3 in bar chart ranking. Because of this, I will leave three cone unweighted, and adjust the other metrics around it. Size-adjusted vertical was 3rd most important according to the density plot and 5th most important on the bar chart; however, unlike size-adjusted three cone, it is not a close #5 (over 3 percent behind broad jump). Size-adjusted bench press is clearly the least important metric when it comes to predicting All-Pro players, considering the small 3% difference in means and that only 57.73% of All-Pro players tested above the average non-All-Pro player in this metric. 
+
+I mentioned that I would set my scale with an unweighted size-adjusted three cone. From there, I know that I want size-adjusted shuttle and broad jump to be weighted a little heavier with the same multiplier, so I decided on a 2x multiplier. I use the same 2x multiplier step up to get to a multiplier of 4x for size-adjusted 40 time. I decided on following the same trend when stepping down in importance from three cone to size-adjusted vertical, which has a multiplier of 1/2. Finally, as predictive as size-adjusted 40 time appears to be on All-Pro players, size-adjusted bench is the opposite, so it makes sense to have a multiplier of 1/4. 
+
+Now we have our weights to calculate size-adjusted athleticism score! Note that after calculation, I subtracted 33.434019 to make the maximum SAAS be 10.0 (for aesthetic purposes)!
+
+```{r, echo=FALSE}
+# OVERALL size-adjusted athleticism stat... this is a pretty nice ranking if you sort by the "saas" stat 
+
+# Calculate size-adjusted athleticism score 
+combine$SAAS <- combine$sa_40 * 4 + combine$sa_vert / 2 + combine$sa_bench / 4 + combine$sa_broad * 2 + combine$sa_three + combine$sa_shuttle * 2
+
+# create scale up to 10 
+combine$SAAS <- combine$SAAS - 33.434019
+
+```
+
+Since I didn't use z-scores, I want to check that the distribution of SAAS is approximately normal before calculating percentiles to determine where a player ranks in athleticism amongst the entire group of participants.
+
+```{r, echo=FALSE}
+# check mean and create histogram
+# mean(combine$SAAS)
+hist(combine$SAAS, main = paste('Combine SAAS Distribution'))
+```
+
+Since the data is approximately normal, I can calculate percentiles for each individual player's size-adjusted athleticism score.
+
+
+```{r, echo=FALSE}
+# Calculate percentile for each row
+combine$SAAS_percentile <- rank(combine$SAAS) / length(combine$SAAS) * 100
+```
+
+# Visualize SAAS by Position
+
+The box and whisker plot below shows which positions contain the best and worst athletes. As you can see, the median EDGE is the most athletic, while the median long snapper (LS) is the least athletic.
+\vspace{12pt}
+
+```{r warning=FALSE, echo=FALSE}
+# Load necessary library
+library(ggplot2)
+
+# Customize plot appearance
+ggplot(combine, aes(x = Pos, y = SAAS_percentile, fill = Pos)) +
+  geom_boxplot(color = "black", alpha = 0.8) +
+  labs(title = "SAAS Percentile by Position",
+       x = "Position",
+       y = "SAAS Percentile") +
+  theme_minimal() +  # Choose a minimalistic theme
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels
+        legend.position = "none")  # Remove legend
+
+```
+
+
+# Logistic Model
+
+I fit a logistic model to the data to see how well SAAS predicts the dummy variable of All-Pro vs. Not All-Pro. I chose a logistic regression because this is a binary classification problem. The results are poor, but that's likely due to an imbalanced dataset with very few "success" or All-Pro cases for the model to learn from. With few All-Pro instances available for the model to learn from, it may struggle to identify patterns or features that distinguish an All-Pro from a regular player. Despite the overall model's shortcomings, SAAS is labeled as a significant predictor of an All-Pro player with a p-value less than .001.   
+\vspace{12pt}
+```{r, echo=FALSE}
+# Train a logistic regression model
+logistic_model <- glm(all_pro_binary ~ SAAS, data = combine, family = "binomial")
+
+# Summarize the model
+summary(logistic_model)
+
+```
+Though logistic models don't use R^2 to measure goodness-of-fit, I approximate the proportion of variability explained by the model through the McFadden pseudo-method. The value produced by this method is only ~6.2%. 
+
+
+```{r, echo=FALSE}
+# Calculate the log-likelihood of the fitted model
+log_likelihood_fitted <- logLik(logistic_model)
+
+# Fit the intercept-only model
+intercept_model <- glm(all_pro_binary ~ 1, data = combine, family = "binomial")
+log_likelihood_intercept <- logLik(intercept_model)
+
+# Calculate McFadden's pseudo R^2
+pseudo_r_squared <- 1 - (log_likelihood_fitted / log_likelihood_intercept)
+
+# Print the pseudo R^2
+cat("McFadden's pseudo R^2:", pseudo_r_squared, "\n")
+
+```
+
+
+The summary statistics below tell us that 33% of All-Pro players ranked above the 90th percentile. In other words, the top 10 percent of athletes made up one-third of the total All-Pro selections. Additionally, 22% of players in the 90th percentile or above made the All-Pro team, in comparison to ~7% of players that made an All-Pro team overall. Though a strong SAAS does not guarantee a player to be an All-Pro, this shows that elite athleticism matters because it changes the math by increasing the probability of a "hit" when drafting players.  
+
+# Summary of All-Pro Players by Athletic Percentile
+
+
+```{r, echo=FALSE}
+# Count how many players have made the All-Pro team
+all_pro_count <- sum(combine$all_pro_binary, na.rm = TRUE)
+
+# Calculate the total number of players
+total_players <- nrow(combine)
+
+# Calculate the percentage of players who made the All-Pro team
+percent_all_pro <- (all_pro_count / total_players) * 100
+
+# Print the results
+cat("Number of players who made the All-Pro team:", all_pro_count, "\n")
+cat("Number of total players in dataset:", total_players, "\n")
+cat("Percentage of players who made the All-Pro team:", round(percent_all_pro,2), "%\n")
+
+# Filter players above the 90th percentile for SAAS_percentile_z
+above_90_percentile <- combine[combine$SAAS_percentile_z > 90, ]
+
+# # Count the number of All-Pro players in the top 10% percentile
+# num_all_pro <- sum(above_90_percentile$all_pro_binary, na.rm = TRUE)
+# 
+# # Print the results
+# cat("Number of players above the 90th percentile who made the All-Pro team:", num_all_pro, "\n")
+# 
+# # Percent of the total All-Pro selections that ranked above the 90th percentile SAAS
+# percent_all_pro_top_10 <- (num_all_pro / all_pro_count) * 100
+# cat("Percent of the total All-Pro selections that ranked above 90th percentile SAAS:", round(percent_all_pro_top_10, 2), "%\n")
+# 
+# # Percent of players in the top 10 percent of athleticism that made All-Pro teams
+# percent_top_10_all_pro <- (num_all_pro / (total_players * 0.1)) * 100
+# cat("Percent of players in the top 10 percent of athleticism that made All-Pro teams:", round(percent_top_10_all_pro, 2), "%\n")
+
+
+```
+
+
+The output below helps set an athletic baseline for players that I would recommend NFL general managers avoid drafting (unless the player has very high internal scouting grades, PFF grades, or other metrics relating to college production to compensate for the lack of athletic ability). Specifically, I set this threshold at the 50th percentile. Only ~22.7% of All-Pro selections are below average in their size-adjusted athleticism scores (SAAS). As an NFL general manager, I would much rather bank on the 77.3% group, and take players with above average SAAS. 
+\vspace{12pt}
+```{r, echo=FALSE}
+# Filter players below the 50th percentile
+below_50_percentile <- combine[combine$SAAS_percentile < 50, ]
+
+# Count the number of players below the 50th percentile who made the All-Pro team
+num_all_pro <- sum(below_50_percentile$all_pro_binary, na.rm = TRUE)
+
+# Calculate the proportion of players below the 50th percentile who made the All-Pro team
+percent_all_pro <- mean(below_50_percentile$all_pro_binary, na.rm = TRUE) * 100
+
+
+# Print the result
+cat("Number of players below the 50th percentile who made the All-Pro team:", num_all_pro, "\n")
+cat("Percent of All-Pros below 50th percentile:", round(num_all_pro/97*100,2), "%\n")
+cat("Percent of total players below the 50th percentile who made the All-Pro team:", round(percent_all_pro, 2), "%\n")
+```
+
+
+Finally, I visually lay out the counts of All-Pro players by SAAS percentile by graphing the two in a histogram. There is clearly a drop off in All-Pro caliber players for draft prospects that post a below average SAAS score, which is why I determined the SAAS threshold to be the 50th percentile. Specifically, 75 out of 97 All-Pro players are above the 50th percentile in their SAAS. 
+\vspace{12pt}
+```{r warning=FALSE, echo=FALSE}
+# Filter the combine dataset to include only All-Pro players
+all_pro_players <- combine[combine$all_pro_binary == 1, ]
+
+# Define the number of buckets and create SAAS percentile bins
+num_buckets <- 10
+max_saas_percentile <- max(all_pro_players$SAAS_percentile)
+breaks <- seq(0, max_saas_percentile + 1, length.out = num_buckets + 1)
+all_pro_players$SAAS_percentile_bins <- cut(all_pro_players$SAAS_percentile, breaks = breaks, include.lowest = TRUE)
+
+# Define colors for the bars
+all_pro_color <- "#0072B2"  # Blue color for All-Pro players
+
+# Create a bar plot without legend
+ggplot(all_pro_players, aes(x = SAAS_percentile_bins, fill = factor(SAAS_percentile_bins))) +
+  geom_bar() +
+  labs(title = "Number of All-Pro Players by SAAS Percentile",
+       x = "SAAS Percentile",
+       y = "Count") +
+  scale_fill_manual(values = rep(all_pro_color, num_buckets)) +  # Set bar colors
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none") +  # Remove legend
+  geom_text(stat = "count", aes(label = ..count..), vjust = -0.2)  # Add count labels above bars
+
+```
+
+
+## Main Takeaway #1 
+
+Using the dataset of players who have tested in all 6 events at the NFL combine between 2013 and 2022, I found that size-adjusted athleticism (SAAS) is a key factor in the odds a player makes an All-Pro team. The main takeaway is that general managers should focus on players with a high SAAS (a baseline of 50th percentile SAAS) to optimally increase their chances of hitting on an All-Pro player; however, size-adjusted athleticism should not be used alone in determining the future value of a player. Rather, it should be paired with other analysis (for example: film grades, college production numbers, and if they broke out and produced early in their college career) and/or used as a tie-breaker between potential draft picks.
+
+# SAAS by Position
+## Main Takeaway #2 
+I split up SAAS by position to see if atheticism matters more for certain positions over others. Below, I graph the athletic distribution of All-Pro players at each position (since 2014). Considering that the average All-Pro center and cornerback have below 50th percentile athleticism, I would deem high athleticism scores to be less important at those positions. Rather, more emphasis should be put on production, tape, and mental makeup at these positions. On the flip side, All-Pro linebackers and edge defenders have higher end athleticism on average; therefore, I would recommend focusing on players with 75th+ percentile athleticism at those positions.
+\vspace{12pt}
+\vspace{12pt}
+```{r, echo=FALSE}
+## Install plotly if you haven't already
+# install.packages("plotly")
+
+library(ggplot2)
+library(dplyr)
+library(plotly)
+
+
+# Calculate the count of All-Pro players by position and their average SAAS percentile
+position_counts <- all_pro_players %>%
+  group_by(Pos) %>%
+  summarise(count = n(), avg_SAAS_percentile = mean(SAAS_percentile, na.rm = TRUE)) %>%
+  arrange(avg_SAAS_percentile)
+
+# Reverse alphabetical order of positions
+position_counts$Pos <- factor(position_counts$Pos, levels = rev(sort(unique(position_counts$Pos)))) # helps see "OL" in legend upon knitting
+
+# Define colors for each position manually
+pos_colors <- c(
+  "C" = "#1F77B4",      # Blue
+  "CB" = "#FF7F0E",     # Orange
+  "DE" = "#2CA02C",     # Green
+  "DT" = "#D62728",     # Red
+  "OL" = "#17BECF",     # Cyan
+  "EDGE" = "#9467BD",   # Purple
+  "DL" = "#8C564B",     # Brown
+  "FB" = "#E377C2",     # Pink
+  "ILB" = "#7F7F7F",    # Gray
+  "OG" = "#BCBD22",     # Olive
+  "OLB" = "#9EDAE5",    # Light Blue
+  "LB" = "#FDB462",     # Light Orange
+  "OT" = "#FF9896",     # Light Red
+  "QB" = "#FFD8B1",     # Light Orange
+  "RB" = "#C5B0D5",     # Light Purple
+  "S" = "#C49C94",      # Light Brown
+  "TE" = "#F7B6D2",     # Light Pink
+  "WR" = "#C7C7C7"      # Light Gray
+)
+
+# Plot the count of All-Pro players by position, sorted by average SAAS using ggplot
+ggplot_plot <- ggplot(position_counts, aes(x = avg_SAAS_percentile, y = count, fill = Pos, text = paste("Position: ", Pos, "<br>Count: ", count, "<br>SAAS: ", round(avg_SAAS_percentile, 2)))) +
+  geom_bar(stat = "identity", width = 1.5) +  # Adjust width of bars here
+  geom_text(aes(label = Pos), vjust = -.5, size = 3, angle = 45, fontface = "bold") +  # Add bold position labels
+  labs(title = "Distribution of All-Pro Player Athleticism (SAAS Percentile) by Position",
+       x = "Athleticism (SAAS)",
+       y = "Count of All-Pro Players") +
+  scale_fill_manual(values = pos_colors, name = "Position") +  # Assign colors manually
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Convert ggplot to plotly
+plotly_plot <- ggplotly(ggplot_plot, tooltip = "text")
+
+# Display the interactive plot
+plotly_plot
+
+```
+
+
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Repeat Process Using 2024 Draft Data
+
+Let's do a similar analysis using my athleticism metric to look at the 2024 draft. This is where the above analysis can actually be applied in a predictive manner by ranking players in the upcoming class by athleticism. Since many players did not test in all 6 drills of the combine, I used mean imputation to fill in the NA values. More specifically, I found the average of each test for each position, and filled in the mean value by position. I also could've used median imputation or modeling imputation (which is probably most ideal), but considering that roughly 50% of the overall testing data is NA, I'm missing too much data for any of these approaches to be effective/reliable. I will proceed for the sake of having some data to work with. Now I can still rank all players using my same SAAS metric. 
+
+In the process of data preparation and cleaning, I removed the bench press because very few players participated in the drill. Next, I begin the calculation of SAAS for 2024 combine data (just as computed above, but without bench press). For those opening the Rmd file, the bench press code is commented out, but feel free to add it back in if you're interested.
+
+
+
+```{r, echo=FALSE}
+combine_2024 <- read.csv('combine_2024.csv')
+```
+
+\vspace{12pt}
+```{r warning=FALSE, error=FALSE, echo=FALSE}
+# List of positions
+positions <- c("C", "CB", "DE", "DT", "EDGE", "G", "K", "LB", "OT", "P", "QB", "RB", "SAF", "TE", "WR")
+
+# List of combine drills
+combine_drills <- c("X40yd", "Bench", "Vertical", "Broad.Jump", "X3Cone", "Shuttle")
+
+
+# Function to replace NA values with the mean of the position-specific non-NA values for a given event
+replace_na_with_position_mean <- function(player_position, event_name, combine_data) {
+  filtered_data <- subset(combine_data, Pos == player_position)  # Filter data by player's position
+  event_col <- which(names(filtered_data) == event_name)  # Find column index by event name
+  event_values <- filtered_data[, event_col]  # Extract event values
+  non_na_values <- event_values[!is.na(event_values)]  # Extract non-NA values
+  mean_value <- mean(non_na_values)  # Calculate mean of non-NA values
+  combine_data[combine_data$Pos == player_position, event_col][is.na(combine_data[combine_data$Pos == player_position, event_col])] <- mean_value  # Replace NA values with mean
+  return(combine_data)
+}
+
+
+
+# Loop through each combine drill
+for (drill in combine_drills) {
+  # Loop through each position and apply the function
+  for (position in positions) {
+    combine_2024 <- replace_na_with_position_mean(position, drill, combine_2024)
+  }
+}
+```
+
+```{r, echo=FALSE}
+combine_2024 <- combine_2024[, -which(names(combine_2024) == "Bench")]
+```
+
+```{r, echo=FALSE}
+combine_2024 <- na.omit(combine_2024)
+```
+
+```{r, echo=FALSE}
+# size-adjusted 40 time
+
+# Calculate the averages
+avg_fty_dash <- mean(combine_2024$X40yd)
+avg_weight <- mean(combine_2024$Wt)
+avg_height_IN <- mean(combine_2024$ht_inch)
+
+# Calculate the ratios
+combine_2024$ratio_fty_dash <- ((avg_fty_dash / combine_2024$X40yd)) # properly weight 40 yd dash
+combine_2024$ratio_weight <- ((combine_2024$Wt / avg_weight) / 2) # properly weight the weight of players
+combine_2024$ratio_Height_IN <- combine_2024$ht_inch / avg_height_IN
+
+# Calculate size-adjusted 40
+combine_2024$sa_40 <- combine_2024$ratio_fty_dash * 4 + combine_2024$ratio_weight * 2 + combine_2024$ratio_Height_IN
+
+```
+
+
+```{r, echo=FALSE}
+# size-adjusted vertical 
+
+# Calculate the averages
+avg_vert <- mean(combine_2024$Vertical)
+
+# Calculate the ratios
+combine_2024$ratio_vert <- (combine_2024$Vertical / avg_vert) # divide by z-score
+
+# Calculate size-adjusted vertical
+combine_2024$sa_vert <- combine_2024$ratio_vert * 2 + combine_2024$ratio_weight + combine_2024$ratio_Height_IN
+```
+
+
+```{r, echo=FALSE}
+# # size-adjusted bench
+# 
+# # Calculate the averages
+# avg_bench <- mean(combine_2024$Bench)
+# 
+# # Calculate the ratios
+# combine_2024$ratio_bench <- (combine_2024$Bench / avg_bench) 
+# 
+# # Calculate size-adjusted bench
+# combine_2024$sa_bench <- combine_2024$ratio_bench + (combine_2024$ratio_Height_IN * 2) - combine_2024$ratio_weight
+
+```
+
+
+```{r, echo=FALSE}
+# size-adjusted broad
+
+# Calculate the averages
+avg_broad <- mean(combine_2024$Broad.Jump)
+
+# Calculate the ratios
+combine_2024$ratio_broad <- (combine_2024$Broad.Jump / avg_broad)
+
+# Calculate size-adjusted broad
+combine_2024$sa_broad <- combine_2024$ratio_broad + combine_2024$ratio_Height_IN + combine_2024$ratio_weight / 2
+```
+
+
+```{r, echo=FALSE}
+# size-adjusted three 
+
+# Calculate the averages
+avg_three <- mean(combine_2024$X3Cone)
+
+# Calculate the ratios
+combine_2024$ratio_three <- (avg_three / combine_2024$X3Cone) 
+
+# Calculate size-adjusted three
+combine_2024$sa_three <- combine_2024$ratio_three * 2 + combine_2024$ratio_weight + combine_2024$ratio_Height_IN
+```
+
+
+```{r, echo=FALSE}
+# size-adjusted shuttle 
+
+# Calculate the averages
+avg_shuttle <- mean(combine_2024$Shuttle)
+
+# Calculate the ratios
+combine_2024$ratio_shuttle <- (avg_shuttle / combine_2024$Shuttle) 
+
+# Calculate size-adjusted shuttle
+combine_2024$sa_shuttle <- combine_2024$ratio_shuttle * 2 + combine_2024$ratio_weight + combine_2024$ratio_Height_IN / 2
+```
+
+
+```{r, echo=FALSE}
+# OVERALL size-adjusted athleticism stat 
+
+# Calculate size-adjusted athleticism score 
+combine_2024$SAAS <- combine_2024$sa_40 * 4 + combine_2024$sa_vert / 2 + combine_2024$sa_broad * 2 + combine_2024$sa_three + combine_2024$sa_shuttle * 2 # + combine_2024$sa_bench / 4
+
+# create scale up to 10 for aesthetic purposes
+combine_2024$SAAS <- combine_2024$SAAS - 31.598758
+
+```
+
+Once again, we have our SAAS metric! Since I didn't use z-scores, I want to check that the distribution of SAAS is approximately normal before calculating percentiles to determine where a player ranks in athleticism amongst the entire group of participants.
+\vspace{12pt}
+
+```{r, echo=FALSE}
+# check mean and create histogram
+# mean(combine_2024$SAAS)
+hist(combine_2024$SAAS, main = paste('2024 Combine SAAS Distribution'))
+```
+
+Once again, since the data is approximately normal, I can calculate percentiles for each individual player's size-adjusted athleticism score. The graph below visualizes which positions contain the best and worst athletes. As you can see, the median TE is the most athletic, while the median QB is the least athletic.
+
+```{r, echo=FALSE}
+# Calculate percentile for each row
+combine_2024$SAAS_percentile <- rank(combine_2024$SAAS) / length(combine_2024$SAAS) * 100
+```
+
+
+```{r warning=FALSE, echo=FALSE}
+# Load necessary library
+library(ggplot2)
+
+# Customize plot appearance
+ggplot(combine_2024, aes(x = Pos, y = SAAS_percentile, fill = Pos)) +
+  geom_boxplot(color = "black", alpha = 0.8) +
+  labs(title = "SAAS Percentile by Position",
+       x = "Position",
+       y = "SAAS Percentile") +
+  theme_minimal() +  # Choose a minimalistic theme
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels
+        legend.position = "none")  # Remove legend
+
+```
+
+# Final Thoughts 
+
+The top 10 most athletic players that testing in the 2024 combine according to my metric are Theo Johnson, Chop Robinson, Tip Reiman, Dallas Turner, Johnny Wilson, Isaac Guerendo, Anim Dankwah, Joe Alt, Frank Crum, & Amarius Mims. If I were a GM, I would look at the collegiate production and tape on each of these players to see if it backs up their athleticism. If so, I would look to draft these players (and any others above the 90th percentile of SAAS) at value in the NFL draft while they last. High-end athletes with low production or poor film might be good late round flyers or undrafted free agent signings.
+
+As for the rest of the dataset, given the fall off in All-Pro selections below the 50th percentile of size-adjusted athleticism score, I would recommend an NFL front office to sort by SAAS and be wary of players below the 50th percentile of SAAS, especially if they don't have good tape or other metrics. Though we do not yet know which of the 2024 rookies will be an All-Pro, we may be able better identify diamonds in the rough using these athleticism scores on draft night and focusing on players with above 50th percentile athleticism. This guideline can be used with the exception of cornerbacks and centers, who have plenty of historical examples of All-Pro players with low athleticism (as shown in the graph above). 
+
+# Future Plans
+
+To continue my analysis, I'd like to use a different success metric such as NFL games played and compare results. I'd also want to look into athleticism by combine event and position to see if testing better in certain events corresponds to a higher percentage of All-Pro players at a given position. 
+
+I also believe this analysis could be done on the high school prospect level for colleges determining who to recruit. In the college recruiting case, instead of using combine metrics, I would have to pull high school track data for the top high school football prospects and use All-Conference selections as my success metric. 
+
+
+# Alternate Z-Score SAAS Calculation
+
+The following analysis copies the initial process of creating SAAS, but uses z-scores instead of ratios against the average. Feel free to look through the code and results of this method, if interested. The process is exactly the same, so refer to the above comments if you need clarification. \vspace{12pt}
+
+```{r, echo=FALSE}
+# height z-score
+combine$ht_z_score <- (combine$Height_IN - avg_height_IN) / sd(combine$Height_IN)
+
+# weight z-score
+combine$wt_z_score <- (combine$weight - avg_weight) / sd(combine$weight)
+
+# 40 z-score
+combine$X40_z_score <- -(combine$fty_dash - avg_fty_dash) / sd(combine$fty_dash)
+
+# # Calculate size-adjusted 40 z-score
+combine$sa_40_z <- (combine$X40_z_score * 3 + combine$wt_z_score + combine$ht_z_score) / 2 # divide by 2 to reduce nominal value in comparison to other size-adj stats
+
+```
+
+
+```{r,echo=FALSE}
+# Vertical z-score
+combine$vert_z_score <- (combine$Vertical - avg_vert) / sd(combine$Vertical)
+
+# # Calculate size-adjusted vert z-score
+combine$sa_vert_z <- (combine$vert_z_score * 2 + combine$wt_z_score / 2 + combine$ht_z_score) / 2 # divide by 2 to reduce nominal value in comparison to other size-adj stats
+
+```
+
+
+```{r, echo=FALSE}
+# Bench z-score
+combine$bench_z_score <- (combine$Bench - avg_bench) / sd(combine$Bench)
+
+# # Calculate size-adjusted bench z-score
+combine$sa_bench_z <- combine$bench_z_score - (combine$wt_z_score / 2) + combine$ht_z_score / 4
+```
+
+
+```{r, echo=FALSE}
+# Broad z-score
+combine$broad_z_score <- (combine$broad_jump - avg_broad) / sd(combine$broad_jump)
+
+# # Calculate size-adjusted broad z-score
+combine$sa_broad_z <- combine$broad_z_score + combine$wt_z_score / 2 + combine$ht_z_score / 4
+```
+
+
+```{r, echo=FALSE}
+# Three-cone z-score
+combine$three_z_score <- -(combine$three_cone - avg_three) / sd(combine$three_cone)
+
+# # Calculate size-adjusted three-cone z-score
+combine$sa_three_z <- (combine$three_z_score * 5 + combine$wt_z_score * 1.5 + combine$ht_z_score * 1.5) / 3 # divide by 3 to reduce nominal value in comparison to other size-adj stats
+```
+
+
+```{r, echo=FALSE}
+# Shuttle z-score
+combine$shuttle_z_score <- -(combine$Shuttle - avg_shuttle) / sd(combine$Shuttle)
+# # Calculate size-adjusted shuttle z-score
+combine$sa_shuttle_z <- (combine$shuttle_z_score * 5 + combine$wt_z_score * 2 + combine$ht_z_score * 1.5) / 3 # divide by 3 to reduce nominal value in comparison to other size-adj stats
+```
+
+
+
+```{r, echo=FALSE}
+# Calculate size-adjusted athleticism score based on z-scores
+combine$SAAS_z <- combine$sa_40_z * 2 + combine$sa_vert_z / 1.5 + combine$sa_bench_z + combine$sa_broad_z * 1.5 + combine$sa_three_z / 2.5 + combine$sa_shuttle_z * 1.5
+
+# center scale max and min around 0
+combine$SAAS_z <- ( combine$SAAS_z / 4 ) + 1.242013
+```
+
+
+```{r, echo=FALSE}
+# calculate SAAS percentile for z-score method
+combine$SAAS_percentile_z <- rank(combine$SAAS_z) / length(combine$SAAS_z) * 100
+```
+
+# Z-Score SAAS Visuals & Analysis
+
+Using z-scores, LS is once again the lowest in terms of athleticism by position, while EDGE remains at the top.
+
+```{r warning=FALSE, echo=FALSE}
+# Load necessary library
+library(ggplot2)
+
+# Customize plot appearance
+ggplot(combine, aes(x = Pos, y = SAAS_z, fill = Pos)) +
+  geom_boxplot(color = "black", alpha = 0.8) +
+  labs(title = "SAAS Percentile by Position",
+       x = "Position",
+       y = "SAAS Z-score") +
+  theme_minimal() +  # Choose a minimalistic theme
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels
+        legend.position = "none")  # Remove legend
+
+```
+
+
+```{r, echo=FALSE}
+# Filter the combine dataset to include only All-Pro players
+all_pro_players <- combine[combine$all_pro_binary == 1, ]
+ 
+# Exclude NA values from SAAS_percentile
+ all_pro_players <- all_pro_players[!is.na(all_pro_players$SAAS_percentile_z), ]
+
+# Define the number of buckets and create SAAS percentile bins
+num_buckets <- 10
+
+# Calculate max SAAS percentile (ignoring NA values)
+max_saas_percentile <- max(all_pro_players$SAAS_percentile_z, na.rm = TRUE)
+breaks <- seq(0, max_saas_percentile + 1, length.out = num_buckets + 1)
+
+# Create SAAS percentile bins
+all_pro_players$SAAS_percentile_bins <- cut(all_pro_players$SAAS_percentile_z, breaks = breaks, include.lowest = TRUE)
+
+# Define colors for the bars
+all_pro_color <- "#0072B2"  # Blue color for All-Pro players
+
+# Create a bar plot without legend
+ggplot(all_pro_players, aes(x = SAAS_percentile_bins, fill = factor(SAAS_percentile_bins))) +
+  geom_bar() +
+  labs(title = "Number of All-Pro Players by SAAS Percentile",
+       x = "SAAS Percentile",
+       y = "Count") +
+  scale_fill_manual(values = rep(all_pro_color, num_buckets)) +  # Set bar colors
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none") +  # Remove legend
+  geom_text(stat = "count", aes(label = ..count..), vjust = -0.2)  # Add count labels above bars
+
+```
+
+## Z-Score vs. Original Method Analysis
+
+Looking at the distribution of All-Pro players by athleticism when using z-scores, there are more players below the 50th percentile when compared to my first SAAS calculation method (29 compared to 22), and less All-Pro players above the 90th percentile (27 compared to 29). This doesn't change too much of my analysis outside of potentially wanting to re-examine the significant cut-off points in athleticism. Looking at the z-score distribution, I might suggest focusing on players with above 60th percentile athleticism, or above 30th percentile athleticism. 
+
+\vspace{12pt}
+```{r, echo=FALSE}
+# Calculate the count of All-Pro players by position and their average SAAS percentile
+position_counts <- all_pro_players %>%
+  group_by(Pos) %>%
+  summarise(count = n(), avg_SAAS_percentile = mean(SAAS_percentile_z, na.rm = TRUE)) %>%
+  arrange(avg_SAAS_percentile)
+
+# Define colors for each position manually
+pos_colors <- c(
+
+  "C" = "#1F77B4",    # Blue
+  "CB" = "#FF7F0E",   # Orange
+  "DE" = "#2CA02C",   # Green
+  "DT" = "#D62728",   # Red
+  "EDGE" = "#9467BD", # Purple
+  "DL" = "#8C564B",   # Brown
+  "FB" = "#E377C2",   # Pink
+  "ILB" = "#7F7F7F",  # Gray
+  "OG" = "#BCBD22",   # Olive
+  "OL" = "#17BECF",   # Cyan
+  "OLB" = "#9EDAE5",  # Light Blue
+  "LB" = "#FDB462",   # Light Orange
+  "OT" = "#FF9896",   # Light Red
+  "QB" = "#FFD8B1",   # Light Orange
+  "RB" = "#C5B0D5",   # Light Purple
+  "S" = "#C49C94",    # Light Brown
+  "TE" = "#F7B6D2",   # Light Pink
+  "WR" = "#C7C7C7"    # Light Gray
+)
+
+# Plot the count of All-Pro players by position, sorted by average SAAS using ggplot
+ggplot_plot <- ggplot(position_counts, aes(x = avg_SAAS_percentile, y = count, fill = Pos, text = paste("Position: ", Pos, "<br>Count: ", count, "<br>SAAS: ", round(avg_SAAS_percentile, 2)))) +
+  geom_bar(stat = "identity", width = 1.5) +  # Adjust width of bars here
+  geom_text(aes(label = Pos), vjust = -.5, size = 3, angle = 45, fontface = "bold") +  # Add bold position labels
+  labs(title = "Distribution of All-Pro Player Athleticism (SAAS Percentile) by Position",
+       x = "Athleticism (SAAS Z-Score)",
+       y = "Count of All-Pro Players") +
+  scale_fill_manual(values = pos_colors, name = "Position") +  # Assign colors manually
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Convert ggplot to plotly
+plotly_plot <- ggplotly(ggplot_plot, tooltip = "text")
+
+# Display the interactive plot
+plotly_plot
+
+
+```
+
+\vspace{12pt}
+## Z-Score vs. Original Method Conclusion and Recommendations
+When plotting the distribution of All-Pro athleticism by position using the z-score method, there a few main differences when comparing to the other calculation method. First of all, the average All-Pro cornerback appears much more athletic, and is no longer below the previous 50th percentile cutoff; however, they hover just below the 60th percentile cut-off. Overall, safties, wide recievers, and corners appear more athletic, while offensive guards, defensive tackles, and centers are the biggest fallers in average athleticism for All-Pro players. These results align more with my intuition that interior offensive line and interior defensive line don't need to be freak athletes to be great players at the NFL level. Therefore, based on these results, I would recommend putting greater value on production, tape, and mental makeup at these positions. On the other hand, All-Pro linebackers, tight ends, and edge defenders once again have higher end athleticism than other All-Pro positions on average; therefore, I would recommend focusing on players with 75th+ percentile athleticism at these positions.
+
+
+
